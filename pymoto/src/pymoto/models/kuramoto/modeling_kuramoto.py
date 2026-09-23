@@ -13,6 +13,12 @@ Any accuracy above chance is therefore attributable to K and to the dynamics.
     │   └── readout:  PhaseReadout         theta -> features (B, 2n)
     └── head: FrozenHead                   features -> logits (B, C)         H frozen
 
+config.trainable_drive / config.trainable_head swap FrozenDrive/FrozenHead for
+TrainableDrive/TrainableHead (pymoto.layers), making W and/or H trainable too.
+Both default to False, so every existing variant below is unaffected; turning
+either on forfeits the attribution argument above and is meant only to
+diagnose whether a task's ceiling is K's capacity or the frozen stages'.
+
 Layout of this file, following Hugging Face's modeling_<name>.py:
     KuramotoModelOutput            what the base model returns
     KuramotoPreTrainedModel        config_class / base_model_prefix
@@ -30,7 +36,15 @@ from dataclasses import dataclass
 import torch
 from torch import Tensor
 
-from pymoto.layers import FrozenDrive, FrozenHead, KuramotoCoupling, KuramotoDynamics, PhaseReadout
+from pymoto.layers import (
+    FrozenDrive,
+    FrozenHead,
+    KuramotoCoupling,
+    KuramotoDynamics,
+    PhaseReadout,
+    TrainableDrive,
+    TrainableHead,
+)
 from pymoto.modeling_utils import PreTrainedModel
 from pymoto.models._registry import register_model
 from pymoto.models.kuramoto.configuration_kuramoto import KuramotoConfig
@@ -76,7 +90,8 @@ class KuramotoModel(KuramotoPreTrainedModel):
         # pre-pymoto KuramotoClassifier and KuramotoPolicy used, so a given seed
         # reproduces their init bit-for-bit. Hence coupling is built first.
         coupling = KuramotoCoupling(config.n, config.k_scale, generator=generator, **factory_kwargs)
-        self.drive = FrozenDrive(config.in_dim, config.n, generator=generator, **factory_kwargs)
+        drive_cls = TrainableDrive if config.trainable_drive else FrozenDrive
+        self.drive = drive_cls(config.in_dim, config.n, generator=generator, **factory_kwargs)
         self.dynamics = KuramotoDynamics(coupling, T=config.T, num_steps=config.num_steps, **factory_kwargs)
         self.readout = PhaseReadout()
 
@@ -115,7 +130,8 @@ class KuramotoForClassification(KuramotoPreTrainedModel):
         self.num_classes = config.num_classes
         self.num_features = 2 * config.n
         self.kuramoto = KuramotoModel(config, generator=generator, **factory_kwargs)
-        self.head = FrozenHead(self.num_features, config.num_classes, generator=generator, **factory_kwargs)
+        head_cls = TrainableHead if config.trainable_head else FrozenHead
+        self.head = head_cls(self.num_features, config.num_classes, generator=generator, **factory_kwargs)
 
     def get_classifier(self) -> FrozenHead:
         return self.head

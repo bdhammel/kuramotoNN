@@ -43,6 +43,8 @@ class HParams:
     kuramoto_steps: int = 10  # kuramoto only; see pymoto's kuramoto_inverted_double_pendulum
     kuramoto_g: float = 1.0  # kuramoto only
     kuramoto_k_scale: float = 1.0  # kuramoto only
+    trainable_drive: bool = False  # kuramoto only; train W alongside K (see pymoto.layers.TrainableDrive)
+    trainable_head: bool = False  # kuramoto only; train H alongside K (see pymoto.layers.TrainableHead)
     calibration_size: int = 1024  # kuramoto only
     init_log_std: float = 0.0
     critic_hidden_size: int = 128
@@ -71,6 +73,8 @@ def parse_args() -> tuple[HParams, argparse.Namespace]:
     parser.add_argument("--kuramoto-steps", type=int, default=defaults.kuramoto_steps)
     parser.add_argument("--kuramoto-g", type=float, default=defaults.kuramoto_g)
     parser.add_argument("--kuramoto-k-scale", type=float, default=defaults.kuramoto_k_scale)
+    parser.add_argument("--trainable-drive", action="store_true", default=defaults.trainable_drive)
+    parser.add_argument("--trainable-head", action="store_true", default=defaults.trainable_head)
     parser.add_argument("--calibration-size", type=int, default=defaults.calibration_size)
     parser.add_argument("--init-log-std", type=float, default=defaults.init_log_std)
     parser.add_argument("--critic-hidden-size", type=int, default=defaults.critic_hidden_size)
@@ -99,6 +103,8 @@ def parse_args() -> tuple[HParams, argparse.Namespace]:
         kuramoto_steps=args.kuramoto_steps,
         kuramoto_g=args.kuramoto_g,
         kuramoto_k_scale=args.kuramoto_k_scale,
+        trainable_drive=args.trainable_drive,
+        trainable_head=args.trainable_head,
         calibration_size=args.calibration_size,
         init_log_std=args.init_log_std,
         critic_hidden_size=args.critic_hidden_size,
@@ -148,6 +154,8 @@ def build_actor(hp: HParams) -> GaussianPolicy:
             n=hp.n_oscillators,
             num_steps=hp.kuramoto_steps,
             k_scale=hp.kuramoto_k_scale,
+            trainable_drive=hp.trainable_drive,
+            trainable_head=hp.trainable_head,
         )
         x_cal = collect_calibration_batch(seed=hp.seed + 10_000, size=hp.calibration_size)
         calibrate(mean_net, x_cal, g=hp.kuramoto_g)

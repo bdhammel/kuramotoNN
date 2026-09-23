@@ -22,9 +22,9 @@ Conventions shared by every module here, following torch.nn and timm:
 """
 
 from pymoto.layers.coupling import KuramotoCoupling, coupling, coupling_pairwise, effective_coupling
-from pymoto.layers.drive import FrozenDrive
+from pymoto.layers.drive import FrozenDrive, TrainableDrive
 from pymoto.layers.dynamics import KuramotoDynamics, velocity
-from pymoto.layers.head import FrozenHead
+from pymoto.layers.head import FrozenHead, TrainableHead
 from pymoto.layers.integrators import Step, VectorField, euler_step, rk4_step, rollout, trajectory
 from pymoto.layers.readout import PhaseReadout, readout_features
 
@@ -35,6 +35,8 @@ __all__ = [
     "KuramotoDynamics",
     "PhaseReadout",
     "Step",
+    "TrainableDrive",
+    "TrainableHead",
     "VectorField",
     "coupling",
     "coupling_pairwise",

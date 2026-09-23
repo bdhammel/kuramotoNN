@@ -44,6 +44,10 @@ def build_mean_net(hp: dict) -> torch.nn.Module:
         n=hp["n_oscillators"],
         num_steps=hp["kuramoto_steps"],
         k_scale=hp["kuramoto_k_scale"],
+        # REINFORCE checkpoints (train.py) predate these flags; default False matches
+        # their architecture (W, H frozen).
+        trainable_drive=hp.get("trainable_drive", False),
+        trainable_head=hp.get("trainable_head", False),
     )
 
 
