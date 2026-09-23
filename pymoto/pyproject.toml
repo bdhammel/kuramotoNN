@@ -1,0 +1,15 @@
+[project]
+name = "pymoto"
+version = "0.0.0"
+description = "A framework for experimenting with Kuramoto oscillator networks."
+requires-python = ">=3.12"
+dependencies = [
+    "torch",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

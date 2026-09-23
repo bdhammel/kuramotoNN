@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+.claude/
+wandb/
+experiments/mnist/data/

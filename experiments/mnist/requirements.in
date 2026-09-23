@@ -1,0 +1,6 @@
+torch
+torchvision
+wandb
+numpy
+pdbp
+click
