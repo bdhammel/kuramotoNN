@@ -3,7 +3,11 @@
 Both are wrapped in GaussianPolicy, which adds a state-independent learnable
 log_std and turns the mean-net's raw output into (mean, std) for a diagonal
 Gaussian over the 1-dim continuous action. The mean-net itself is the only
-thing that differs between policies -- see build_policy() in train.py.
+thing that differs between policies -- see build_policy() in train.py and
+train_ppo.py.
+
+Critic is PPO's value function (train_ppo.py only): a plain MLP, never a
+mean-net variant, since it isn't the thing under test.
 """
 
 from __future__ import annotations
@@ -53,3 +57,20 @@ class GaussianPolicy(nn.Module):
         mean = torch.tanh(self.mean_net(x))
         std = self.log_std.exp().expand_as(mean)
         return mean, std
+
+
+class Critic(nn.Module):
+    """Maps a 9-dim observation to a scalar state-value estimate, for PPO's advantage baseline."""
+
+    def __init__(self, obs_dim: int = 9, hidden_size: int = 128):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(obs_dim, hidden_size),
+            nn.Tanh(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.Tanh(),
+            nn.Linear(hidden_size, 1),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.net(x)
