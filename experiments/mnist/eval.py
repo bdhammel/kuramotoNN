@@ -1,51 +1,42 @@
-"""The five controls. Every reported accuracy must be accompanied by all of them.
+"""The five controls on MNIST. Every reported accuracy must be accompanied by all of them.
 
-Run standalone against a checkpoint:
+Run standalone against a checkpoint directory (or a pre-pymoto runs/*.pt file):
 
-    python eval.py --checkpoint runs/final.pt
+    python eval.py --checkpoint runs/final
 
 or import `run_controls` from train.py to log the same numbers into the wandb run
-that produced the checkpoint.
+that produced the checkpoint. The controls themselves live in pymoto.controls;
+this file scores them on the MNIST test set.
 """
 
 from __future__ import annotations
 
 import argparse
-import copy
 import json
-from typing import Callable
 
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 from torch.utils.data import DataLoader
 
+from pymoto import KuramotoForClassification
+from pymoto.controls import linear_probe, with_coupling, with_num_steps, with_solver
+from pymoto.layers import rk4_step
+
 from data import NUM_CLASSES, load_mnist
-from model import KuramotoClassifier, rk4_rollout
 from utils import load_checkpoint, pick_device, set_seed
 
 CHANCE: float = 1.0 / NUM_CLASSES
 
-# theta -> features -> logits, given the drive. Defaults to the model's own Euler
-# rollout; the controls swap in a different integrator or step count.
-PhasesFn = Callable[[KuramotoClassifier, Tensor], Tensor]
-
 
 @torch.no_grad()
-def evaluate(
-    model: KuramotoClassifier,
-    loader: DataLoader,
-    device: torch.device,
-    phases_fn: PhasesFn | None = None,
-) -> tuple[float, float]:
-    """Return (mean cross-entropy, accuracy) over a loader."""
+def evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> tuple[float, float]:
+    """Return (mean cross-entropy, accuracy) over a loader, for anything mapping x -> logits."""
     model.eval()
     total_loss, correct, count = 0.0, 0, 0
     for x, y in loader:
         x, y = x.to(device), y.to(device)
-        z = model.drive(x)
-        theta = model.integrate(z) if phases_fn is None else phases_fn(model, z)
-        logits = model.classify(model.readout(theta))
+        logits = model(x)
         total_loss += float(F.cross_entropy(logits, y, reduction="sum"))
         correct += int((logits.argmax(dim=-1) == y).sum())
         count += y.numel()
@@ -53,27 +44,8 @@ def evaluate(
 
 
 @torch.no_grad()
-def collect_features(
-    model: KuramotoClassifier, loader: DataLoader, device: torch.device
-) -> tuple[Tensor, Tensor]:
-    """-> ((N, 2n) features, (N,) labels), both on `device`."""
-    model.eval()
-    feats, labels = [], []
-    for x, y in loader:
-        x = x.to(device)
-        feats.append(model.readout(model.integrate(model.drive(x))))
-        labels.append(y.to(device))
-    return torch.cat(feats), torch.cat(labels)
-
-
-# --------------------------------------------------------------------------
-# Control 2: num_steps = 0
-# --------------------------------------------------------------------------
-
-
-@torch.no_grad()
 def control_zero_steps(
-    model: KuramotoClassifier, loader: DataLoader, device: torch.device
+    model: KuramotoForClassification, loader: DataLoader, device: torch.device
 ) -> dict[str, float]:
     """Correctness assertion, not a result: with no integration the input is severed.
 
@@ -90,7 +62,8 @@ def control_zero_steps(
     input, so that is what is asserted here; the accuracy is reported alongside it
     as the majority-class floor.
     """
-    model.eval()
+    zero = with_num_steps(model, 0)
+    zero.eval()
     correct, count = 0, 0
     preds_seen: set[int] = set()
     reference: Tensor | None = None
@@ -98,13 +71,13 @@ def control_zero_steps(
 
     for x, y in loader:
         x, y = x.to(device), y.to(device)
-        features = model.readout(model.integrate(model.drive(x), num_steps=0))
+        features = zero.forward_features(x)
         if reference is None:
             reference = features[0].clone()
         max_feature_spread = max(
             max_feature_spread, float((features - reference).abs().max())
         )
-        preds = model.classify(features).argmax(dim=-1)
+        preds = zero.forward_head(features).argmax(dim=-1)
         preds_seen.update(preds.unique().tolist())
         correct += int((preds == y).sum())
         count += y.numel()
@@ -123,85 +96,8 @@ def control_zero_steps(
     }
 
 
-# --------------------------------------------------------------------------
-# Control 3: random K
-# --------------------------------------------------------------------------
-
-
-def model_with_K(model: KuramotoClassifier, K: Tensor) -> KuramotoClassifier:
-    """Deep-copy the model with a different coupling matrix, everything else identical."""
-    clone = copy.deepcopy(model)
-    with torch.no_grad():
-        clone.K.copy_(K.to(clone.K.device))
-    return clone
-
-
-# --------------------------------------------------------------------------
-# Control 4: linear probe
-# --------------------------------------------------------------------------
-
-
-def linear_probe(
-    model: KuramotoClassifier,
-    train_loader: DataLoader,
-    test_loader: DataLoader,
-    device: torch.device,
-    epochs: int = 40,
-    lr: float = 1e-2,
-    batch_size: int = 512,
-) -> dict[str, float]:
-    """Fit a trainable 2n -> 10 head on the frozen features. A measurement, never the model.
-
-    This upper-bounds what the frozen random head can reach and separates "the
-    features are bad" from "the frozen head cannot read good features". The probe
-    is discarded; it is never attached to the classifier.
-    """
-    x_train, y_train = collect_features(model, train_loader, device)
-    x_test, y_test = collect_features(model, test_loader, device)
-
-    probe = nn.Linear(x_train.shape[1], NUM_CLASSES).to(device)
-    opt = torch.optim.Adam(probe.parameters(), lr=lr)
-    n = x_train.shape[0]
-
-    for _ in range(epochs):
-        perm = torch.randperm(n, device=device)
-        for start in range(0, n, batch_size):
-            idx = perm[start : start + batch_size]
-            loss = F.cross_entropy(probe(x_train[idx]), y_train[idx])
-            opt.zero_grad(set_to_none=True)
-            loss.backward()
-            opt.step()
-
-    with torch.no_grad():
-        train_acc = float((probe(x_train).argmax(-1) == y_train).float().mean())
-        test_acc = float((probe(x_test).argmax(-1) == y_test).float().mean())
-    return {"train_acc": train_acc, "test_acc": test_acc}
-
-
-# --------------------------------------------------------------------------
-# Control 5: solver transfer
-# --------------------------------------------------------------------------
-
-
-def rk4_phases_fn(refine: int) -> PhasesFn:
-    """Integrate the same ODE over the same T with RK4 at `refine` x the step count.
-
-    A large accuracy drop against the Euler number means the trained K describes a
-    particular discretization rather than a flow.
-    """
-
-    def phases(model: KuramotoClassifier, z: Tensor) -> Tensor:
-        steps = model.num_steps * refine
-        return rk4_rollout(z, model.K_eff(), model.g, model.T / steps, steps)
-
-    return phases
-
-
-# --------------------------------------------------------------------------
-
-
 def run_controls(
-    model: KuramotoClassifier,
+    model: KuramotoForClassification,
     K_init: Tensor,
     train_loader: DataLoader,
     test_loader: DataLoader,
@@ -226,7 +122,7 @@ def run_controls(
 
     # 3. Random-K control. The single most important number in the project: if this
     #    matches trained-K, the system is a reservoir, not a learned dynamical system.
-    _, random_acc = evaluate(model_with_K(model, K_init), test_loader, device)
+    _, random_acc = evaluate(with_coupling(model, K_init), test_loader, device)
     results["control/random_K_acc"] = random_acc
     results["control/lift_over_random_K"] = trained_acc - random_acc
 
@@ -236,11 +132,13 @@ def run_controls(
     results["control/linear_probe_train_acc"] = probe["train_acc"]
 
     # 5. Solver transfer: Euler at num_steps vs RK4 at refine * num_steps.
-    _, rk4_acc = evaluate(model, test_loader, device, phases_fn=rk4_phases_fn(rk4_refine))
+    _, rk4_acc = evaluate(with_solver(model, rk4_step, refine=rk4_refine), test_loader, device)
     results["control/rk4_acc"] = rk4_acc
     results["control/solver_transfer_drop"] = trained_acc - rk4_acc
 
     return results
+
+
 
 
 def format_controls(results: dict[str, float], rk4_refine: int, num_steps: int) -> str:
@@ -313,7 +211,7 @@ def main() -> None:
         rk4_refine=args.rk4_refine,
         probe_epochs=args.probe_epochs,
     )
-    print(format_controls(results, args.rk4_refine, model.num_steps))
+    print(format_controls(results, args.rk4_refine, model.config.num_steps))
 
     if args.json_out:
         with open(args.json_out, "w") as fh:

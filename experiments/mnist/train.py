@@ -16,18 +16,17 @@ import torch
 import torch.nn.functional as F
 import wandb
 
-from data import load_mnist
-from eval import evaluate, format_controls, run_controls
-from model import KuramotoClassifier, calibrate
-from utils import (
+from pymoto import calibrate, create_model
+from pymoto.diagnostics import (
     assert_only_K_is_trainable,
     compute_diagnostics,
     format_diagnostics,
-    pick_device,
-    save_checkpoint,
-    set_seed,
     warn_on_diagnostics,
 )
+
+from data import load_mnist
+from eval import evaluate, format_controls, run_controls
+from utils import pick_device, save_checkpoint, set_seed
 
 
 @dataclass
@@ -108,7 +107,8 @@ def main() -> None:
 
     # Build on CPU with the seeded generator, then move: keeps init reproducible
     # regardless of which device the run lands on.
-    model = KuramotoClassifier(
+    model = create_model(
+        "kuramoto_mnist",
         n=hp.n,
         T=hp.T,
         num_steps=hp.num_steps,
@@ -116,15 +116,16 @@ def main() -> None:
         generator=generator,
     ).to(device)
     assert_only_K_is_trainable(model)
+    coupling = model.get_coupling()
 
     calibrate(model, x_cal, g=hp.g)
-    K_init = model.K.detach().cpu().clone()
+    K_init = coupling.K.detach().cpu().clone()
 
     init_diag = compute_diagnostics(model, x_cal)
     calibrated = {
-        "g (drive gain, radians)": float(model.g),
-        "tau (logit temperature)": float(model.tau),
-        "k_scale": float(model.k_scale),
+        "g (drive gain, radians)": float(model.kuramoto.dynamics.g),
+        "tau (logit temperature)": float(model.get_classifier().tau),
+        "k_scale": float(coupling.k_scale),
     }
     print(format_diagnostics(init_diag, "Init diagnostics (t = T, K at init)", calibrated))
     for warning in warn_on_diagnostics(init_diag):
@@ -132,18 +133,19 @@ def main() -> None:
 
     run.summary.update(init_diag.as_dict(prefix="init/"))
     run.summary.update(
-        {"init/g": float(model.g), "init/tau": float(model.tau),
-         "init/k_scale": float(model.k_scale), "seed": hp.seed}
+        {"init/g": calibrated["g (drive gain, radians)"],
+         "init/tau": calibrated["tau (logit temperature)"],
+         "init/k_scale": calibrated["k_scale"], "seed": hp.seed}
     )
 
     if args.calibrate_only:
         run.finish()
         return
 
-    optimizer = torch.optim.Adam([model.K], lr=hp.lr)
+    optimizer = torch.optim.Adam([coupling.K], lr=hp.lr)
     best_val_acc, global_step = 0.0, 0
-    best_path = os.path.join(args.out_dir, "best.pt")
-    final_path = os.path.join(args.out_dir, "final.pt")
+    best_path = os.path.join(args.out_dir, "best")
+    final_path = os.path.join(args.out_dir, "final")
     data_stats = {"mean": data.mean, "std": data.std}
     hp_dict = asdict(hp)
 
@@ -212,7 +214,7 @@ def main() -> None:
         probe_epochs=args.probe_epochs,
     )
     print()
-    print(format_controls(results, args.rk4_refine, model.num_steps))
+    print(format_controls(results, args.rk4_refine, model.config.num_steps))
     run.summary.update(results)
     run.summary.update({"best_val_acc": best_val_acc})
 

@@ -1,4 +1,4 @@
 torch
-gymnasium
+gymnasium[mujoco]
 wandb
 -e ../../pymoto

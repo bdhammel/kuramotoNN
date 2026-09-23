@@ -14,10 +14,15 @@ theta -> theta - mean(theta)  ->  [sin, cos]  ->  (B,512)
 logits = features @ H.T / tau                            H frozen random, no bias
 ```
 
+The model itself is pymoto's `kuramoto_mnist`
+(`create_model("kuramoto_mnist")`); see [`../../pymoto`](../../pymoto) for
+its component breakdown. This directory holds only the experiment: data,
+training loop, controls.
+
 ## Setup
 
 ```sh
-uv pip install -r requirements.in
+uv pip install -r requirements.in   # includes pymoto, editable
 wandb login          # runs default to --wandb-mode online
 ```
 
@@ -39,8 +44,10 @@ Adam on `K` alone, `lr=1e-3`, batch 128, 30 epochs, 5k held-out validation image
 python train.py --epochs 30 --seed 0
 ```
 
-Writes `runs/best.pt` (best validation accuracy) and `runs/final.pt`. Both
-store `K_init`, which the random-`K` control needs.
+Writes `runs/best/` (best validation accuracy) and `runs/final/`. Each is a
+pymoto `save_pretrained` directory (`config.json`, `pytorch_model.bin`) plus
+`training_state.pt`, which holds `K_init` -- the random-`K` control needs it --
+and the hparams and data statistics.
 
 Per epoch, wandb receives train/val loss and accuracy plus `||K||_2`,
 `||K||_F`, `h * lambda_max(J)`, participation ratio, wrapped-phase
@@ -55,15 +62,22 @@ Run at the end of every training run and logged as wandb summary values.
 Also standalone against any checkpoint:
 
 ```sh
-python eval.py --checkpoint runs/final.pt --json-out runs/controls.json
+python eval.py --checkpoint runs/final --json-out runs/controls.json
 ```
+
+Single-file checkpoints written before the move to pymoto (`runs/*.pt`) still
+load: their flat `K`/`W`/`H` state dicts are remapped by
+`pymoto.checkpoint_filter_fn`.
 
 ## Files
 
 | file | contents |
 |---|---|
 | `data.py` | download, global-scalar standardization, 55k/5k/10k split, loaders |
-| `model.py` | coupling term, Euler and RK4 rollouts, readout, classifier, calibration |
 | `train.py` | `HParams`, training loop, wandb, per-epoch diagnostics |
-| `eval.py` | the five controls, standalone against a checkpoint |
-| `utils.py` | seeding, diagnostics, participation ratio, spectral norms, checkpoints |
+| `eval.py` | the five controls scored on the test set, standalone against a checkpoint |
+| `utils.py` | seeding, device selection, checkpoint save/load |
+
+The model, `calibrate`, the control variants (`pymoto.controls`) and the
+diagnostics (participation ratio, spectral norms, the only-`K`-is-trainable
+guard) come from `pymoto`.

@@ -19,6 +19,9 @@ exactly zero, so with zero integration steps the input has no path to the
 output at all. Any accuracy above chance is attributable to `K` and to the
 dynamics, and to nothing else.
 
+The implementation lives in [`pymoto`](../pymoto), which breaks this pipeline
+into one module per stage (drive, dynamics/coupling, readout, head).
+
 ## Calibration table
 
 Before training, `W`, `g`, and `tau` are calibrated and the following
