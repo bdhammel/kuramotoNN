@@ -1,6 +1,6 @@
 # kuramoto
 
-Exploring applications of Kuramoto oscillator networks, and the capabilities of unconventional computing technologies like Unconventional (the company).
+Exploring applications of Kuramoto oscillator networks, and the capabilities of alternative computing technologies, like "Unconventional AI".
 
 ## Layout
 
