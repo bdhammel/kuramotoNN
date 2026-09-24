@@ -4,9 +4,10 @@ Two interchangeable policies, both trained with REINFORCE (vanilla policy
 gradient) on `CartPole-v1` via `gymnasium`:
 
 - `mlp` (default): `Linear(4, 128) -> ReLU -> Linear(128, 2)`.
-- `kuramoto`: a Kuramoto-oscillator policy, mirroring `../mnist/model.py`'s
-  `KuramotoClassifier` -- a frozen random drive projects the observation into
-  128 oscillators (matching the MLP's hidden width), a trainable coupling
+- `kuramoto`: a Kuramoto-oscillator policy, pymoto's `kuramoto_cartpole` --
+  the same architecture as the MNIST classifier (see [`../../pymoto`](../../pymoto)).
+  A frozen random drive projects the observation into 64 oscillators by
+  default (`--n-oscillators`), a trainable coupling
   matrix `K` evolves their phases for 10 Euler steps (`K` is the *only*
   trainable tensor), and a frozen random head reads out mean-relative
   `[sin, cos]` features into action logits. Before training starts, it's
@@ -21,7 +22,7 @@ for the theory behind the `kuramoto` policy's architecture.
 ## Setup
 
 ```sh
-uv pip install -r requirements.in
+uv pip install -r requirements.in   # includes pymoto, editable
 ```
 
 ## Train
@@ -48,4 +49,17 @@ episodes hitting the max 500-step episode length).
 ```sh
 python eval.py --episodes 100
 python eval.py --render   # watch it play
+python eval.py --controls # kuramoto only: also score the control variants
 ```
+
+`--controls` scores pymoto's controls by mean greedy reward: `num_steps = 0`
+(input severed), random `K` (the exact init `K`, the reservoir baseline), and
+RK4 on a 10x finer grid (solver transfer). Checkpoints from `train.py` store
+`K_init`. For older checkpoints it is regenerated from the seed, which is exact
+because `K` is the first thing drawn after `torch.manual_seed`.
+
+Both `eval.py` and `train.py` finish with an energy-per-inference estimate
+(`pymoto.energy`). For the `mlp` policy it is digital only. For the `kuramoto`
+policy it shows the digital simulation, the physical-oscillator breakdown, and
+a comparison against the `mlp` policy's architecture (`4-hidden-2`). Tune it
+with `--energy-costs`, `--energy-baseline` and `--hw field=value`.
