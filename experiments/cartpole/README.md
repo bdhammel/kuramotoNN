@@ -57,3 +57,9 @@ python eval.py --controls # kuramoto only: also score the control variants
 RK4 on a 10x finer grid (solver transfer). Checkpoints from `train.py` store
 `K_init`. For older checkpoints it is regenerated from the seed, which is exact
 because `K` is the first thing drawn after `torch.manual_seed`.
+
+Both `eval.py` and `train.py` finish with an energy-per-inference estimate
+(`pymoto.energy`). For the `mlp` policy it is digital only. For the `kuramoto`
+policy it shows the digital simulation, the physical-oscillator breakdown, and
+a comparison against the `mlp` policy's architecture (`4-hidden-2`). Tune it
+with `--energy-costs`, `--energy-baseline` and `--hw field=value`.

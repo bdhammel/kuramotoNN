@@ -3,7 +3,8 @@
     python train.py --epochs 30
 
 Calibration runs once before training and prints the init diagnostic table. The
-five controls run once after training and are logged as wandb summary values.
+five controls and the energy estimate (pymoto.energy) run once after training and
+are logged as wandb summary values.
 """
 
 from __future__ import annotations
@@ -23,6 +24,11 @@ from pymoto.diagnostics import (
     format_diagnostics,
     warn_on_diagnostics,
 )
+from pymoto.energy import add_energy_args
+
+from data import load_mnist
+from eval import evaluate, format_controls, run_controls, run_energy
+from utils import pick_device, save_checkpoint, set_seed
 
 from data import load_mnist
 from eval import evaluate, format_controls, run_controls
@@ -68,6 +74,7 @@ def parse_args() -> tuple[HParams, argparse.Namespace]:
     parser.add_argument("--probe-epochs", type=int, default=40)
     parser.add_argument("--calibrate-only", action="store_true",
                         help="calibrate, print the init diagnostic table, and stop")
+    add_energy_args(parser)
     args = parser.parse_args()
 
     hp = HParams(
@@ -217,6 +224,11 @@ def main() -> None:
     print(format_controls(results, args.rk4_refine, model.config.num_steps))
     run.summary.update(results)
     run.summary.update({"best_val_acc": best_val_acc})
+
+    energy, energy_table = run_energy(model, args)
+    print()
+    print(energy_table)
+    run.summary.update(energy)
 
     final_diag = compute_diagnostics(model, x_cal)
     run.summary.update(final_diag.as_dict(prefix="final/"))

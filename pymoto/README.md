@@ -144,6 +144,56 @@ its own metric: test accuracy for MNIST, episode reward for CartPole.
 wraps the model and shares its weights. See `experiments/mnist/eval.py` and
 `experiments/cartpole/eval.py --controls` for both tasks.
 
+## Energy estimates: `pymoto.energy`
+
+Every constant, its source, the assumptions and the sensitivity analysis are in
+[`../docs/energy-estimates.md`](../docs/energy-estimates.md).
+
+Energy per sample, counted as events × energy per event, in two ways:
+
+- **Digital:** MACs plus weight reads, from on-chip SRAM or off-chip DRAM/HBM.
+  This is how an MLP baseline is costed, and how the Kuramoto network is costed
+  when it is simulated with Euler steps.
+- **Physical:** the network run as real oscillators.
+  - K lives in the coupling fabric and is never read from memory.
+  - `num_steps` does not exist; energy scales with `T`.
+  - The terms are DAC writes that set each oscillator's drive, oscillator-cycles,
+    coupler power, the wires carrying each oscillator's signal to its couplers, and
+    the I/Q readout conversions.
+  - The frozen `W` and `H` stay digital. They are costed with their weights read
+    from SRAM, read from DRAM, or regenerated from their seed.
+
+```python
+from pymoto.energy import energy_report, format_energy_report, mlp_workload
+report = energy_report(model, baseline=mlp_workload((784, 256, 10)))   # flat dict, nJ
+print(format_energy_report(report, baseline_name="MLP 784-256-10"))
+```
+
+Two ratios in the report decide whether the physics is worth building:
+
+- `sim_over_core`: the digital simulation's energy over the physical core's. It
+  should be ≫ 1. A circuit that is cheaper to simulate than to run is not worth
+  building.
+- `drive_head_share`: the digital `W` and `H`'s share of the physical total. Near 1
+  means the oscillators cannot help until `W` stops being read from memory
+  (Amdahl's law).
+
+The digital presets are published circuit figures: `7nm-int8` (Google, ISCA
+2021, the default), `45nm-int8` and `45nm-fp32` (Horowitz, ISSCC 2014).
+
+`OscillatorHardware`'s defaults are **placeholders, not measurements**: CMOS ring
+oscillators at 1 GHz, with 100 carrier cycles per unit of model time. Override
+them with `--hw field=value`.
+
+Both experiments' `eval.py` and `train.py` print the report and log it (JSON /
+wandb summary), and take `--energy-costs`, `--energy-batch-size`,
+`--energy-baseline DIMS` and `--hw`. Without a checkpoint:
+
+```sh
+python -m pymoto.energy kuramoto_mnist --energy-baseline 784,256,10
+python -m pymoto.energy kuramoto_mnist --set n=1024 --hw cycles_per_unit_time=300
+```
+
 ## Model level
 
 These are thin compositions of the blocks, following Hugging Face and timm:
@@ -165,6 +215,7 @@ src/pymoto/
 ├── layers/              building blocks (above)
 ├── controls.py          evaluation variants and the linear probe
 ├── diagnostics.py       calibration diagnostics, spectral quantities, attribution guard
+├── energy.py            energy per sample: digital simulation vs physical oscillators
 ├── configuration_utils.py, modeling_utils.py   PretrainedConfig, PreTrainedModel   [HF]
 └── models/
     ├── _registry.py     register_model, create_model, list_models                  [timm]
