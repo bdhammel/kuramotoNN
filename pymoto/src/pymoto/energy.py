@@ -28,6 +28,9 @@ accountings differ in what counts as an event:
 The digital presets are published circuit figures. OscillatorHardware's defaults are
 not: they are order-of-magnitude placeholders for CMOS ring oscillators, and the
 report says so. Replace them with numbers for the hardware you have in mind.
+
+docs/energy-estimates.md records every constant's source, the assumptions, what is
+not modelled, reference outputs and how sensitive the conclusions are to each number.
 """
 
 from __future__ import annotations

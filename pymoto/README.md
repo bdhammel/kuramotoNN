@@ -146,6 +146,9 @@ wraps the model and shares its weights. See `experiments/mnist/eval.py` and
 
 ## Energy estimates: `pymoto.energy`
 
+Every constant, its source, the assumptions and the sensitivity analysis are in
+[`../docs/energy-estimates.md`](../docs/energy-estimates.md).
+
 Energy per sample, counted as events × energy per event, in two ways:
 
 - **Digital:** MACs plus weight reads, from on-chip SRAM or off-chip DRAM/HBM.
