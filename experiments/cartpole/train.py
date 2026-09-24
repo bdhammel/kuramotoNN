@@ -17,7 +17,9 @@ import torch.optim as optim
 import wandb
 from torch.distributions import Categorical
 
-from model import KuramotoPolicy, PolicyNet, calibrate
+from pymoto import calibrate, create_model
+
+from model import PolicyNet
 
 
 @dataclass
@@ -25,7 +27,7 @@ class HParams:
     policy: str = "mlp"  # "mlp" or "kuramoto"
     hidden_size: int = 128  # mlp only
     n_oscillators: int = 64  # kuramoto only; half PolicyNet's hidden width
-    kuramoto_steps: int = 10  # kuramoto only; see model.py:KuramotoPolicy
+    kuramoto_steps: int = 10  # kuramoto only; see pymoto's kuramoto_cartpole
     kuramoto_g: float = 1.0  # kuramoto only
     kuramoto_k_scale: float = 1.0  # kuramoto only
     calibration_size: int = 1024  # kuramoto only
@@ -85,7 +87,7 @@ def discount_returns(rewards: list[float], gamma: float) -> torch.Tensor:
 
 
 def collect_calibration_batch(seed: int, size: int) -> torch.Tensor:
-    """Random-action rollout states, for KuramotoPolicy's calibrate().
+    """Random-action rollout states, for the kuramoto policy's calibrate().
 
     CartPole-v1's observation_space bounds are not representative of visited
     states (velocity/angular-velocity bounds are ~3.4e38, since they're
@@ -110,7 +112,8 @@ def build_policy(hp: HParams) -> torch.nn.Module:
     if hp.policy == "mlp":
         return PolicyNet(hidden_size=hp.hidden_size)
 
-    policy = KuramotoPolicy(
+    policy = create_model(
+        "kuramoto_cartpole",
         n=hp.n_oscillators,
         num_steps=hp.kuramoto_steps,
         k_scale=hp.kuramoto_k_scale,
@@ -150,6 +153,8 @@ def main() -> None:
 
     policy = build_policy(hp)
     optimizer = optim.Adam(policy.parameters(), lr=hp.lr)
+    # The random-K control in eval.py needs the exact initial coupling matrix.
+    K_init = policy.get_coupling().K.detach().clone() if hp.policy == "kuramoto" else None
 
     running_reward = 0.0
     solved_at = None
@@ -191,7 +196,10 @@ def main() -> None:
             break
 
     env.close()
-    torch.save({"hparams": asdict(hp), "state_dict": policy.state_dict()}, "checkpoint.pt")
+    torch.save(
+        {"hparams": asdict(hp), "state_dict": policy.state_dict(), "K_init": K_init},
+        "checkpoint.pt",
+    )
     print("Saved policy weights to checkpoint.pt")
 
     run.summary.update(

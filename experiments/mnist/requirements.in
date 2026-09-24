@@ -4,3 +4,4 @@ wandb
 numpy
 pdbp
 click
+-e ../../pymoto
