@@ -3,6 +3,9 @@
     python eval.py --episodes 100
     python eval.py --render
     python eval.py --controls        # kuramoto only: the controls, scored by reward
+
+Ends with the energy-per-inference estimate from pymoto.energy; a Kuramoto policy
+is compared against the MLP policy's architecture.
 """
 
 from __future__ import annotations
@@ -15,6 +18,7 @@ import torch
 
 from pymoto import checkpoint_filter_fn, create_model
 from pymoto.controls import with_coupling, with_num_steps, with_solver
+from pymoto.energy import add_energy_args, report_from_args
 from pymoto.layers import rk4_step
 
 from model import PolicyNet
@@ -31,7 +35,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--controls", action="store_true",
                         help="also score the num_steps=0, random-K and RK4 variants")
     parser.add_argument("--rk4-refine", type=int, default=10)
+    add_energy_args(parser)
     return parser.parse_args()
+
+
+def energy_baseline(hp: dict) -> tuple[int, int, int] | None:
+    """The MLP policy's shape, as the energy baseline for a Kuramoto policy; None for the MLP itself."""
+    if hp["policy"] != "kuramoto":
+        return None
+    return (4, hp.get("hidden_size", 128), 2)
 
 
 def build_policy(hp: dict) -> torch.nn.Module:
@@ -123,6 +135,9 @@ def main() -> None:
             raise SystemExit("--controls applies only to the kuramoto policy")
         run_controls(env, policy, initial_coupling(checkpoint), args.episodes, args.rk4_refine)
     env.close()
+
+    print()
+    print(report_from_args(policy, args, default_baseline=energy_baseline(checkpoint["hparams"]))[1])
 
 
 if __name__ == "__main__":

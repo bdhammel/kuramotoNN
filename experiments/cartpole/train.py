@@ -18,7 +18,9 @@ import wandb
 from torch.distributions import Categorical
 
 from pymoto import calibrate, create_model
+from pymoto.energy import add_energy_args, report_from_args
 
+from eval import energy_baseline
 from model import PolicyNet
 
 
@@ -57,6 +59,7 @@ def parse_args() -> tuple[HParams, argparse.Namespace]:
     parser.add_argument("--log-every", type=int, default=defaults.log_every)
     parser.add_argument("--wandb-project", default="cartpole-reinforce")
     parser.add_argument("--wandb-mode", default="online", choices=["online", "offline", "disabled"])
+    add_energy_args(parser)
     args = parser.parse_args()
 
     hp = HParams(
@@ -208,6 +211,11 @@ def main() -> None:
             "final_running_reward": running_reward,
         }
     )
+
+    energy, energy_table = report_from_args(policy, args, default_baseline=energy_baseline(asdict(hp)))
+    print()
+    print(energy_table)
+    run.summary.update(energy)
     run.finish()
 
 

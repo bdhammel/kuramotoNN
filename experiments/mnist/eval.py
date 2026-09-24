@@ -3,6 +3,7 @@
 Run standalone against a checkpoint directory (or a pre-pymoto runs/*.pt file):
 
     python eval.py --checkpoint runs/final
+    python eval.py --checkpoint runs/final --energy-only     # just the energy estimate
 
 or import `run_controls` from train.py to log the same numbers into the wandb run
 that produced the checkpoint. The controls themselves live in pymoto.controls;
@@ -21,6 +22,7 @@ from torch.utils.data import DataLoader
 
 from pymoto import KuramotoForClassification
 from pymoto.controls import linear_probe, with_coupling, with_num_steps, with_solver
+from pymoto.energy import add_energy_args, report_from_args
 from pymoto.layers import rk4_step
 
 from data import NUM_CLASSES, load_mnist
@@ -179,6 +181,16 @@ def format_controls(results: dict[str, float], rk4_refine: int, num_steps: int) 
     return "\n".join(lines)
 
 
+def run_energy(model: KuramotoForClassification, args: argparse.Namespace) -> tuple[dict[str, float], str]:
+    """Energy per sample (pymoto.energy), against an MLP of the same hidden width by default.
+
+    The ratios against the MLP only mean something at matched accuracy, which this
+    does not check; pass --energy-baseline for an MLP that reaches the same accuracy.
+    """
+    config = model.config
+    return report_from_args(model, args, default_baseline=(config.in_dim, config.n, config.num_classes))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run the five controls against a checkpoint.")
     parser.add_argument("--checkpoint", required=True)
@@ -187,6 +199,9 @@ def main() -> None:
     parser.add_argument("--rk4-refine", type=int, default=10)
     parser.add_argument("--probe-epochs", type=int, default=40)
     parser.add_argument("--json-out", default=None, help="optional path for the raw numbers")
+    parser.add_argument("--energy-only", action="store_true",
+                        help="skip the controls; print only the energy estimate (needs no data)")
+    add_energy_args(parser)
     args = parser.parse_args()
 
     device = pick_device(args.device)
@@ -194,24 +209,31 @@ def main() -> None:
     hp = ckpt["hparams"]
     set_seed(hp["seed"])
 
-    data = load_mnist(
-        root=args.data_root,
-        batch_size=hp["batch_size"],
-        val_size=hp["val_size"],
-        seed=hp["seed"],
-        calibration_size=hp["calibration_size"],
-    )
+    results: dict[str, float] = {}
+    if not args.energy_only:
+        data = load_mnist(
+            root=args.data_root,
+            batch_size=hp["batch_size"],
+            val_size=hp["val_size"],
+            seed=hp["seed"],
+            calibration_size=hp["calibration_size"],
+        )
 
-    results = run_controls(
-        model,
-        ckpt["K_init"],
-        data.train,
-        data.test,
-        device,
-        rk4_refine=args.rk4_refine,
-        probe_epochs=args.probe_epochs,
-    )
-    print(format_controls(results, args.rk4_refine, model.config.num_steps))
+        results = run_controls(
+            model,
+            ckpt["K_init"],
+            data.train,
+            data.test,
+            device,
+            rk4_refine=args.rk4_refine,
+            probe_epochs=args.probe_epochs,
+        )
+        print(format_controls(results, args.rk4_refine, model.config.num_steps))
+        print()
+
+    energy, table = run_energy(model, args)
+    print(table)
+    results.update(energy)
 
     if args.json_out:
         with open(args.json_out, "w") as fh:

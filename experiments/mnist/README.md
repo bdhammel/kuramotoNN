@@ -69,13 +69,27 @@ Single-file checkpoints written before the move to pymoto (`runs/*.pt`) still
 load: their flat `K`/`W`/`H` state dicts are remapped by
 `pymoto.checkpoint_filter_fn`.
 
+## 4. Energy estimate
+
+Printed after the controls, written to `--json-out`, and logged to wandb by
+`train.py`. It is the energy per sample, simulated digitally vs run as
+physical oscillators, compared against an MLP of the same hidden width
+(`784-n-10`). See `pymoto.energy` for the model and its assumptions. The ratios
+to the MLP mean something only at matched accuracy, so pass
+`--energy-baseline` for an MLP that reaches it.
+
+```sh
+python eval.py --checkpoint runs/final --energy-only             # no data, no controls
+python eval.py --checkpoint runs/final --energy-only --hw cycles_per_unit_time=300
+```
+
 ## Files
 
 | file | contents |
 |---|---|
 | `data.py` | download, global-scalar standardization, 55k/5k/10k split, loaders |
 | `train.py` | `HParams`, training loop, wandb, per-epoch diagnostics |
-| `eval.py` | the five controls scored on the test set, standalone against a checkpoint |
+| `eval.py` | the five controls scored on the test set, plus the energy estimate; standalone against a checkpoint |
 | `utils.py` | seeding, device selection, checkpoint save/load |
 
 The model, `calibrate`, the control variants (`pymoto.controls`) and the

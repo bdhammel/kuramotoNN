@@ -6,6 +6,7 @@ Organized like Hugging Face transformers and timm:
     pymoto.models         model families, each a config + modeling file, plus the registry
     pymoto.controls       evaluation variants: severed input, random K, solver transfer, probe
     pymoto.diagnostics    calibration diagnostics and the only-K-is-trainable guard
+    pymoto.energy         energy per sample: digital simulation vs physical oscillators
 
     model = pymoto.create_model("kuramoto_mnist", num_steps=50)
     pymoto.calibrate(model, x_cal, g=1.0)
