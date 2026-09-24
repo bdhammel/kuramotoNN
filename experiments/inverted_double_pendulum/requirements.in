@@ -1,0 +1,4 @@
+torch
+gymnasium[mujoco]
+wandb
+-e ../../pymoto

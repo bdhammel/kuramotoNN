@@ -65,3 +65,29 @@ class FrozenDrive(nn.Module):
 
     def extra_repr(self) -> str:
         return f"in_dim={self.in_dim}, n={self.n}"
+
+
+class TrainableDrive(FrozenDrive):
+    """FrozenDrive with W as a Parameter instead of a buffer -- everything else identical.
+
+    Exists only to test whether a task's ceiling comes from the frozen input
+    stage rather than from K's capacity. Using it forfeits the "K is the only
+    trainable tensor" attribution argument that makes the frozen variant's
+    accuracy interpretable (see pymoto.controls); it's a diagnostic model, not
+    a replacement for it.
+    """
+
+    def __init__(
+        self,
+        in_dim: int,
+        n: int,
+        *,
+        generator: torch.Generator | None = None,
+        device: torch.device | str | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
+        nn.Module.__init__(self)
+        self.in_dim = in_dim
+        self.n = n
+        self.W = nn.Parameter(torch.empty(n, in_dim, device=device, dtype=dtype))
+        self.reset_parameters(generator)

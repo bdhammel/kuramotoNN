@@ -65,10 +65,6 @@ Also standalone against any checkpoint:
 python eval.py --checkpoint runs/final --json-out runs/controls.json
 ```
 
-Single-file checkpoints written before the move to pymoto (`runs/*.pt`) still
-load: their flat `K`/`W`/`H` state dicts are remapped by
-`pymoto.checkpoint_filter_fn`.
-
 ## 4. Energy estimate
 
 Printed after the controls, written to `--json-out`, and logged to wandb by
@@ -82,6 +78,10 @@ to the MLP mean something only at matched accuracy, so pass
 python eval.py --checkpoint runs/final --energy-only             # no data, no controls
 python eval.py --checkpoint runs/final --energy-only --hw cycles_per_unit_time=300
 ```
+
+Single-file checkpoints written before the move to pymoto (`runs/*.pt`) still
+load: their flat `K`/`W`/`H` state dicts are remapped by
+`pymoto.checkpoint_filter_fn`.
 
 ## Files
 

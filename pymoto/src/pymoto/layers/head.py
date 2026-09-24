@@ -76,3 +76,35 @@ class FrozenHead(nn.Module):
 
     def extra_repr(self) -> str:
         return f"in_features={self.in_features}, num_classes={self.num_classes}, tau={float(self.tau):.4g}"
+
+
+class TrainableHead(FrozenHead):
+    """FrozenHead with H as a Parameter instead of a buffer -- everything else identical.
+
+    tau stays a fixed buffer, calibrated once at init as usual: it would be
+    entirely redundant with a trainable H (both just rescale the same logits),
+    so leaving it fixed removes an otherwise-unconstrained degree of freedom
+    rather than adding a meaningful one.
+
+    Exists only to test whether a task's ceiling comes from the frozen output
+    stage rather than from K's capacity -- it's exactly pymoto.controls'
+    linear_probe made permanent instead of a discarded measurement, so using
+    it forfeits the "K is the only trainable tensor" attribution argument.
+    """
+
+    def __init__(
+        self,
+        in_features: int,
+        num_classes: int,
+        *,
+        generator: torch.Generator | None = None,
+        device: torch.device | str | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
+        nn.Module.__init__(self)
+        factory_kwargs = {"device": device, "dtype": dtype}
+        self.in_features = in_features
+        self.num_classes = num_classes
+        self.H = nn.Parameter(torch.empty(num_classes, in_features, **factory_kwargs))
+        self.register_buffer("tau", torch.tensor(1.0, **factory_kwargs))
+        self.reset_parameters(generator)

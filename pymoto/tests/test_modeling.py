@@ -21,7 +21,7 @@ def small_model(**kwargs) -> KuramotoForClassification:
 
 
 def test_registry():
-    assert list_models() == ["kuramoto_cartpole", "kuramoto_mnist"]
+    assert list_models() == ["kuramoto_cartpole", "kuramoto_inverted_double_pendulum", "kuramoto_mnist"]
     assert list_models("*mnist") == ["kuramoto_mnist"]
     model = create_model("kuramoto_cartpole", num_steps=3)
     assert (model.config.in_dim, model.config.num_classes, model.config.n) == (4, 2, 64)

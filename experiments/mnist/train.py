@@ -30,6 +30,10 @@ from data import load_mnist
 from eval import evaluate, format_controls, run_controls, run_energy
 from utils import pick_device, save_checkpoint, set_seed
 
+from data import load_mnist
+from eval import evaluate, format_controls, run_controls
+from utils import pick_device, save_checkpoint, set_seed
+
 
 @dataclass
 class HParams:

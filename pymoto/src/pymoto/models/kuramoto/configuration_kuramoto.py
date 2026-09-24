@@ -23,6 +23,11 @@ class KuramotoConfig(PretrainedConfig):
         T: total integration time.
         num_steps: Euler steps over [0, T]; the depth of the weight-tied stack.
         k_scale: coupling strength, K_eff = k_scale * K. Fixed, never trained.
+        trainable_drive: if True, W (pymoto.layers.TrainableDrive) trains alongside
+            K instead of staying frozen (pymoto.layers.FrozenDrive). Forfeits the
+            "K is the only trainable tensor" attribution argument; a diagnostic,
+            not the default architecture.
+        trainable_head: same, for H (TrainableHead vs. FrozenHead).
     """
 
     model_type: ClassVar[str] = "kuramoto"
@@ -33,6 +38,8 @@ class KuramotoConfig(PretrainedConfig):
     T: float = 1.0
     num_steps: int = 10
     k_scale: float = 1.0
+    trainable_drive: bool = False
+    trainable_head: bool = False
 
     def __post_init__(self) -> None:
         if self.n < 1 or self.in_dim < 1 or self.num_classes < 1:
